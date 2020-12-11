@@ -48,7 +48,16 @@ enum class WriteFlag {
 
 Q_DECLARE_FLAGS(WriteFlags, WriteFlag)
 
+// Clang 10 complains about an unused function introduced by
+// Q_DECLARE_OPERATORS_FOR_FLAGS
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#endif
 Q_DECLARE_OPERATORS_FOR_FLAGS(WriteFlags)
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 /// Format message for writing into log file (ignores QT_MESSAGE_PATTERN,
 /// because logfiles should have a fixed format).
@@ -117,7 +126,7 @@ inline void writeToStdErr(
                     .toLocal8Bit();
 
     QMutexLocker locked(&s_mutexStdErr);
-    const size_t written = fwrite(
+    const std::size_t written = fwrite(
             formattedMessage.constData(), sizeof(char), formattedMessage.size(), stderr);
     Q_UNUSED(written);
     DEBUG_ASSERT(written == static_cast<size_t>(formattedMessage.size()));
@@ -309,7 +318,7 @@ void Logging::initialize(
 
     s_debugAssertBreak = debugAssertBreak;
 
-    if (qgetenv("QT_MESSAGE_PATTERN").isEmpty()) {
+    if (qEnvironmentVariableIsEmpty("QT_MESSAGE_PATTERN")) {
         qSetMessagePattern(kDefaultMessagePattern);
     }
 

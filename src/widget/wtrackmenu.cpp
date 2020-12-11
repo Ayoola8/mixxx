@@ -22,6 +22,7 @@
 #include "library/trackprocessing.h"
 #include "library/trackset/crate/cratefeaturehelper.h"
 #include "mixer/playermanager.h"
+#include "moc_wtrackmenu.cpp"
 #include "preferences/colorpalettesettings.h"
 #include "sources/soundsourceproxy.h"
 #include "track/track.h"
@@ -261,6 +262,9 @@ void WTrackMenu::createActions() {
         m_pClearPlayCountAction = new QAction(tr("Play Count"), m_pClearMetadataMenu);
         connect(m_pClearPlayCountAction, &QAction::triggered, this, &WTrackMenu::slotClearPlayCount);
 
+        m_pClearRatingAction = new QAction(tr("Rating"), m_pClearMetadataMenu);
+        connect(m_pClearRatingAction, &QAction::triggered, this, &WTrackMenu::slotClearRating);
+
         m_pClearMainCueAction = new QAction(tr("Cue Point"), m_pClearMetadataMenu);
         connect(m_pClearMainCueAction, &QAction::triggered, this, &WTrackMenu::slotClearMainCue);
 
@@ -417,7 +421,8 @@ void WTrackMenu::setupActions() {
         m_pMetadataMenu->addAction(m_pImportMetadataFromMusicBrainzAct);
         m_pMetadataMenu->addAction(m_pExportMetadataAct);
 
-        for (const auto& updateInExternalTrackCollection : m_updateInExternalTrackCollections) {
+        for (const auto& updateInExternalTrackCollection :
+                qAsConst(m_updateInExternalTrackCollections)) {
             ExternalTrackCollection* externalTrackCollection =
                     updateInExternalTrackCollection.externalTrackCollection;
             if (externalTrackCollection) {
@@ -438,6 +443,7 @@ void WTrackMenu::setupActions() {
     if (featureIsEnabled(Feature::Reset)) {
         m_pClearMetadataMenu->addAction(m_pClearBeatsAction);
         m_pClearMetadataMenu->addAction(m_pClearPlayCountAction);
+        m_pClearMetadataMenu->addAction(m_pClearRatingAction);
         // FIXME: Why is clearing the loop not working?
         m_pClearMetadataMenu->addAction(m_pClearMainCueAction);
         m_pClearMetadataMenu->addAction(m_pClearHotCuesAction);
@@ -479,7 +485,7 @@ bool WTrackMenu::isAnyTrackBpmLocked() const {
     if (m_pTrackModel) {
         const int column =
                 m_pTrackModel->fieldIndex(LIBRARYTABLE_BPM_LOCK);
-        for (const auto trackIndex : m_trackIndexList) {
+        for (const auto& trackIndex : m_trackIndexList) {
             QModelIndex bpmLockedIndex =
                     trackIndex.sibling(trackIndex.row(), column);
             if (bpmLockedIndex.data().toBool()) {
@@ -506,7 +512,7 @@ std::optional<std::optional<mixxx::RgbColor>> WTrackMenu::getCommonTrackColor() 
                 m_pTrackModel->fieldIndex(LIBRARYTABLE_COLOR);
         commonColor = mixxx::RgbColor::fromQVariant(
                 m_trackIndexList.first().sibling(m_trackIndexList.first().row(), column).data());
-        for (const auto trackIndex : m_trackIndexList) {
+        for (const auto& trackIndex : m_trackIndexList) {
             const auto otherColor = mixxx::RgbColor::fromQVariant(
                     trackIndex.sibling(trackIndex.row(), column).data());
             if (commonColor != otherColor) {
@@ -1234,7 +1240,7 @@ namespace {
 
 class SetColorTrackPointerOperation : public mixxx::TrackPointerOperation {
   public:
-    explicit SetColorTrackPointerOperation(mixxx::RgbColor::optional_t color)
+    explicit SetColorTrackPointerOperation(const mixxx::RgbColor::optional_t& color)
             : m_color(color) {
     }
 
@@ -1249,7 +1255,7 @@ class SetColorTrackPointerOperation : public mixxx::TrackPointerOperation {
 
 } // anonymous namespace
 
-void WTrackMenu::slotColorPicked(mixxx::RgbColor::optional_t color) {
+void WTrackMenu::slotColorPicked(const mixxx::RgbColor::optional_t& color) {
     const auto progressLabelText =
             tr("Setting color of %n track(s)", "", getTrackCount());
     const auto trackOperator =
@@ -1261,7 +1267,7 @@ void WTrackMenu::slotColorPicked(mixxx::RgbColor::optional_t color) {
     hide();
 }
 
-void WTrackMenu::loadSelectionToGroup(QString group, bool play) {
+void WTrackMenu::loadSelectionToGroup(const QString& group, bool play) {
     TrackPointer pTrack = getFirstTrackPointer();
     if (!pTrack) {
         return;
@@ -1327,6 +1333,29 @@ void WTrackMenu::slotClearBeats() {
             tr("Resetting beats of %n track(s)", "", getTrackCount());
     const auto trackOperator =
             ResetBeatsTrackPointerOperation();
+    applyTrackPointerOperation(
+            progressLabelText,
+            &trackOperator);
+}
+
+namespace {
+
+class ResetRatingTrackPointerOperation : public mixxx::TrackPointerOperation {
+  private:
+    void doApply(
+            const TrackPointer& pTrack) const override {
+        pTrack->resetRating();
+    }
+};
+
+} // anonymous namespace
+
+//slot for reset played count, sets count to 0 of one or more tracks
+void WTrackMenu::slotClearRating() {
+    const auto progressLabelText =
+            tr("Clearing rating of %n track(s)", "", getTrackCount());
+    const auto trackOperator =
+            ResetRatingTrackPointerOperation();
     applyTrackPointerOperation(
             progressLabelText,
             &trackOperator);
@@ -1502,6 +1531,7 @@ class ClearAllPerformanceMetadataTrackPointerOperation : public mixxx::TrackPoin
         m_resetKeys.apply(pTrack);
         m_resetReplayGain.apply(pTrack);
         m_resetWaveform.apply(pTrack);
+        m_resetRating.apply(pTrack);
     }
 
     const ResetBeatsTrackPointerOperation m_resetBeats;
@@ -1514,6 +1544,7 @@ class ClearAllPerformanceMetadataTrackPointerOperation : public mixxx::TrackPoin
     const ResetKeysTrackPointerOperation m_resetKeys;
     const ResetReplayGainTrackPointerOperation m_resetReplayGain;
     const ResetWaveformTrackPointerOperation m_resetWaveform;
+    const ResetRatingTrackPointerOperation m_resetRating;
 };
 
 } // anonymous namespace

@@ -13,6 +13,7 @@
 #include "library/trackcollection.h"
 #include "library/trackcollectionmanager.h"
 #include "mixer/playermanager.h"
+#include "moc_wtracktableview.cpp"
 #include "preferences/colorpalettesettings.h"
 #include "preferences/dialog/dlgpreflibrary.h"
 #include "sources/soundsourceproxy.h"
@@ -27,7 +28,8 @@
 namespace {
 
 const ConfigKey kConfigKeyAllowTrackLoadToPlayingDeck("[Controls]", "AllowTrackLoadToPlayingDeck");
-
+// Default color for the focus border of TableItemDelegates
+const QColor kDefaultFocusBorderColor = Qt::white;
 }
 
 WTrackTableView::WTrackTableView(QWidget* parent,
@@ -42,6 +44,7 @@ WTrackTableView::WTrackTableView(QWidget* parent,
           m_pConfig(pConfig),
           m_pLibrary(pLibrary),
           m_backgroundColorOpacity(backgroundColorOpacity),
+          m_pFocusBorderColor(kDefaultFocusBorderColor),
           m_sorting(sorting),
           m_selectionChangedSinceLastGuiTick(true),
           m_loadCachedOnly(false) {
@@ -74,7 +77,7 @@ WTrackTableView::WTrackTableView(QWidget* parent,
 
 WTrackTableView::~WTrackTableView() {
     WTrackTableViewHeader* pHeader =
-            dynamic_cast<WTrackTableViewHeader*>(horizontalHeader());
+            qobject_cast<WTrackTableViewHeader*>(horizontalHeader());
     if (pHeader) {
         pHeader->saveHeaderState();
     }
@@ -171,7 +174,7 @@ void WTrackTableView::loadTrackModel(QAbstractItemModel* model) {
 
     // Save the previous track model's header state
     WTrackTableViewHeader* oldHeader =
-            dynamic_cast<WTrackTableViewHeader*>(horizontalHeader());
+            qobject_cast<WTrackTableViewHeader*>(horizontalHeader());
     if (oldHeader) {
         oldHeader->saveHeaderState();
     }
@@ -276,7 +279,7 @@ void WTrackTableView::loadTrackModel(QAbstractItemModel* model) {
             }
         }
 
-        m_pSortColumn->set(trackModel->sortColumnIdFromColumnIndex(sortColumn));
+        m_pSortColumn->set(static_cast<int>(trackModel->sortColumnIdFromColumnIndex(sortColumn)));
         m_pSortOrder->set(sortOrder);
         applySorting();
     }
@@ -336,32 +339,44 @@ void WTrackTableView::slotMouseDoubleClicked(const QModelIndex& index) {
     // Read the current TrackLoadAction settings
     int doubleClickActionConfigValue =
             m_pConfig->getValue(ConfigKey("[Library]", "TrackLoadAction"),
-                    static_cast<int>(DlgPrefLibrary::LOAD_TO_DECK));
+                    static_cast<int>(DlgPrefLibrary::TrackDoubleClickAction::LoadToDeck));
     DlgPrefLibrary::TrackDoubleClickAction doubleClickAction =
             static_cast<DlgPrefLibrary::TrackDoubleClickAction>(
                     doubleClickActionConfigValue);
+
+    if (doubleClickAction == DlgPrefLibrary::TrackDoubleClickAction::Ignore) {
+        return;
+    }
 
     auto trackModel = getTrackModel();
     VERIFY_OR_DEBUG_ASSERT(trackModel) {
         return;
     }
 
-    if (doubleClickAction == DlgPrefLibrary::LOAD_TO_DECK &&
+    if (doubleClickAction == DlgPrefLibrary::TrackDoubleClickAction::LoadToDeck &&
             trackModel->hasCapabilities(
                     TrackModel::Capability::LoadToDeck)) {
         TrackPointer pTrack = trackModel->getTrack(index);
         if (pTrack) {
             emit loadTrack(pTrack);
         }
-    } else if (doubleClickAction == DlgPrefLibrary::ADD_TO_AUTODJ_BOTTOM &&
+    } else if (doubleClickAction == DlgPrefLibrary::TrackDoubleClickAction::AddToAutoDJBottom &&
             trackModel->hasCapabilities(
                     TrackModel::Capability::AddToAutoDJ)) {
         addToAutoDJ(PlaylistDAO::AutoDJSendLoc::BOTTOM);
-    } else if (doubleClickAction == DlgPrefLibrary::ADD_TO_AUTODJ_TOP &&
+    } else if (doubleClickAction == DlgPrefLibrary::TrackDoubleClickAction::AddToAutoDJTop &&
             trackModel->hasCapabilities(
                     TrackModel::Capability::AddToAutoDJ)) {
         addToAutoDJ(PlaylistDAO::AutoDJSendLoc::TOP);
     }
+}
+
+TrackModel::SortColumnId WTrackTableView::getColumnIdFromCurrentIndex() {
+    TrackModel* trackModel = getTrackModel();
+    VERIFY_OR_DEBUG_ASSERT(trackModel) {
+        return TrackModel::SortColumnId::Invalid;
+    }
+    return trackModel->sortColumnIdFromColumnIndex(currentIndex().column());
 }
 
 void WTrackTableView::assignPreviousTrackColor() {
@@ -744,7 +759,7 @@ void WTrackTableView::loadSelectedTrack() {
     }
 }
 
-void WTrackTableView::loadSelectedTrackToGroup(QString group, bool play) {
+void WTrackTableView::loadSelectedTrackToGroup(const QString& group, bool play) {
     auto indices = selectionModel()->selectedRows();
     if (indices.size() > 0) {
         // If the track load override is disabled, check to see if a track is
@@ -940,7 +955,13 @@ void WTrackTableView::applySortingIfVisible() {
 void WTrackTableView::applySorting() {
     TrackModel* trackModel = getTrackModel();
     int sortColumnId = static_cast<int>(m_pSortColumn->get());
-    if (sortColumnId < 0 || sortColumnId >= TrackModel::SortColumnId::NUM_SORTCOLUMNIDS) {
+    if (sortColumnId == static_cast<int>(TrackModel::SortColumnId::Invalid)) {
+        // During startup phase of Mixxx, this method is called with Invalid
+        return;
+    }
+    VERIFY_OR_DEBUG_ASSERT(
+            sortColumnId >= static_cast<int>(TrackModel::SortColumnId::IdMin) &&
+            sortColumnId < static_cast<int>(TrackModel::SortColumnId::IdMax)) {
         return;
     }
 
@@ -966,12 +987,12 @@ void WTrackTableView::slotSortingChanged(int headerSection, Qt::SortOrder order)
     TrackModel* trackModel = getTrackModel();
     TrackModel::SortColumnId sortColumnId = trackModel->sortColumnIdFromColumnIndex(headerSection);
 
-    if (sortColumnId == TrackModel::SortColumnId::SORTCOLUMN_INVALID) {
+    if (sortColumnId == TrackModel::SortColumnId::Invalid) {
         return;
     }
 
-    if (sortColumnId != static_cast<int>(m_pSortColumn->get())) {
-        m_pSortColumn->set(sortColumnId);
+    if (static_cast<int>(sortColumnId) != static_cast<int>(m_pSortColumn->get())) {
+        m_pSortColumn->set(static_cast<int>(sortColumnId));
         sortingChanged = true;
     }
     if (sortOrder != m_pSortOrder->get()) {

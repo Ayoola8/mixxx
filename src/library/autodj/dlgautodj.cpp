@@ -4,6 +4,7 @@
 
 #include "library/playlisttablemodel.h"
 #include "library/trackcollectionmanager.h"
+#include "moc_dlgautodj.cpp"
 #include "track/track.h"
 #include "util/assert.h"
 #include "util/compatibility.h"
@@ -66,7 +67,7 @@ DlgAutoDJ::DlgAutoDJ(WLibrary* parent,
             m_pTrackTableView,
             &WTrackTableView::setSelectedClick);
 
-    QBoxLayout* box = dynamic_cast<QBoxLayout*>(layout());
+    QBoxLayout* box = qobject_cast<QBoxLayout*>(layout());
     VERIFY_OR_DEBUG_ASSERT(box) { //Assumes the form layout is a QVBox/QHBoxLayout!
     } else {
         box->removeWidget(m_pTrackTablePlaceholder);
@@ -91,7 +92,7 @@ DlgAutoDJ::DlgAutoDJ(WLibrary* parent,
     setupActionButton(pushButtonFadeNow, &DlgAutoDJ::fadeNowButton, tr("Fade"));
     setupActionButton(pushButtonSkipNext, &DlgAutoDJ::skipNextButton, tr("Skip"));
     setupActionButton(pushButtonShuffle, &DlgAutoDJ::shufflePlaylistButton, tr("Shuffle"));
-    setupActionButton(pushButtonAddRandom, &DlgAutoDJ::addRandomButton, tr("Random"));
+    setupActionButton(pushButtonAddRandomTrack, &DlgAutoDJ::addRandomTrackButton, tr("Random"));
 
     m_enableBtnTooltip = tr(
             "Enable Auto DJ\n"
@@ -113,7 +114,7 @@ DlgAutoDJ::DlgAutoDJ(WLibrary* parent,
             "Shuffle the content of the Auto DJ queue\n"
             "\n"
             "Shortcut: Shift+F9");
-    QString addRandomBtnTooltip = tr(
+    QString addRandomTrackBtnTooltip = tr(
             "Adds a random track from track sources (crates) to the Auto DJ queue.\n"
             "If no track sources are configured, the track is added from the library instead.");
     QString repeatBtnTooltip = tr(
@@ -150,11 +151,17 @@ DlgAutoDJ::DlgAutoDJ(WLibrary* parent,
     pushButtonFadeNow->setToolTip(fadeBtnTooltip);
     pushButtonSkipNext->setToolTip(skipBtnTooltip);
     pushButtonShuffle->setToolTip(shuffleBtnTooltip);
-    pushButtonAddRandom->setToolTip(addRandomBtnTooltip);
+    pushButtonAddRandomTrack->setToolTip(addRandomTrackBtnTooltip);
     pushButtonRepeatPlaylist->setToolTip(repeatBtnTooltip);
     spinBoxTransition->setToolTip(spinBoxTransitionTooltip);
     labelTransitionAppendix->setToolTip(labelTransitionTooltip);
     fadeModeCombobox->setToolTip(fadeModeTooltip);
+
+    // Prevent the interactive widgets from being focused with Tab or Shift+Tab
+    fadeModeCombobox->setFocusPolicy(Qt::ClickFocus);
+    spinBoxTransition->setFocusPolicy(Qt::ClickFocus);
+    // work around QLineEdit being protected
+    spinBoxTransition->findChild<QLineEdit*>()->setFocusPolicy(Qt::ClickFocus);
 
     connect(spinBoxTransition,
             QOverload<int>::of(&QSpinBox::valueChanged),
@@ -216,7 +223,7 @@ DlgAutoDJ::~DlgAutoDJ() {
 
 void DlgAutoDJ::setupActionButton(QPushButton* pButton,
         void (DlgAutoDJ::*pSlot)(bool),
-        QString fallbackText) {
+        const QString& fallbackText) {
     connect(pButton, &QPushButton::clicked, this, pSlot);
     if (m_bShowButtonText) {
         pButton->setText(fallbackText);
@@ -237,7 +244,7 @@ void DlgAutoDJ::loadSelectedTrack() {
     m_pTrackTableView->loadSelectedTrack();
 }
 
-void DlgAutoDJ::loadSelectedTrackToGroup(QString group, bool play) {
+void DlgAutoDJ::loadSelectedTrackToGroup(const QString& group, bool play) {
     m_pTrackTableView->loadSelectedTrackToGroup(group, play);
 }
 
@@ -320,7 +327,6 @@ void DlgAutoDJ::autoDJStateChanged(AutoDJProcessor::AutoDJState state) {
             pushButtonFadeNow->setEnabled(true);
         }
 
-        // You can always skip the next track if we are enabled.
         pushButtonSkipNext->setEnabled(true);
     }
 }

@@ -1,6 +1,3 @@
-// proxytrackmodel.cpp
-// Created 10/22/2009 by RJ Ryan (rryan@mit.edu)
-
 #include "library/proxytrackmodel.h"
 
 #include <QVariant>
@@ -37,6 +34,11 @@ int ProxyTrackModel::columnIndexFromSortColumnId(TrackModel::SortColumnId sortCo
 TrackId ProxyTrackModel::getTrackId(const QModelIndex& index) const {
     QModelIndex indexSource = mapToSource(index);
     return m_pTrackModel ? m_pTrackModel->getTrackId(indexSource) : TrackId();
+}
+
+CoverInfo ProxyTrackModel::getCoverInfo(const QModelIndex& index) const {
+    QModelIndex indexSource = mapToSource(index);
+    return m_pTrackModel ? m_pTrackModel->getCoverInfo(indexSource) : CoverInfo();
 }
 
 const QVector<int> ProxyTrackModel::getTrackRows(TrackId trackId) const {
@@ -140,14 +142,14 @@ bool ProxyTrackModel::filterAcceptsRow(int sourceRow,
     return rowMatches;
 }
 
-QString ProxyTrackModel::getModelSetting(QString name) {
+QString ProxyTrackModel::getModelSetting(const QString& name) {
     if (m_pTrackModel == NULL) {
         return QString();
     }
     return m_pTrackModel->getModelSetting(name);
 }
 
-bool ProxyTrackModel::setModelSetting(QString name, QVariant value) {
+bool ProxyTrackModel::setModelSetting(const QString& name, const QVariant& value) {
     if (m_pTrackModel == NULL) {
         return false;
     }
